@@ -5,6 +5,7 @@ import random
 from pathlib import Path
 
 import bpy
+import yaml
 
 TOTAL_FRAMES = 320
 FRAME_STEP = 20
@@ -16,6 +17,13 @@ print(system)
 if system == "Linux":
     os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 FILE_PATH = Path(__file__).parent
+
+if FILE_PATH == Path("/"):
+    FILE_PATH = Path("/Users/jinwoo/Documents/work/room")
+
+CONFIG_PATH = FILE_PATH / "configs.yaml"
+with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+    config = yaml.safe_load(f)
 
 if bpy.context.object and bpy.context.object.mode != "OBJECT":
     bpy.ops.object.mode_set(mode="OBJECT")
@@ -42,14 +50,27 @@ add_cube("wall2", (2, -1, -5), (5, 1, 0.1))
 add_cube("wall3", (7, -1, 0), (0.1, 1, 5))
 add_cube("wall4", (-3, -1, 0), (0.1, 1, 5))
 
-bpy.ops.object.camera_add(location=(-1, -1, -1.5))
+cam_conf = config["camera"]
+loc = cam_conf["location"]
+rot = cam_conf["rotation"]
+
+bpy.ops.object.camera_add(location=(loc["x"], loc["y"], loc["z"]))
 cam = bpy.context.active_object
-cam.rotation_euler = (0, -2.14675, 3.14159)
-cam.rotation_euler = (math.radians(0), math.radians(-109), math.radians(180))
+cam.rotation_euler = (rot["x"], rot["y"], rot["z"])
 bpy.context.scene.camera = cam
 
-bpy.ops.object.light_add(type="POINT", location=(2, -1.9, 2.5))
-bpy.context.object.data.energy = 200
+light_conf = config["light"]
+energies = light_conf["energy"]
+locations = light_conf["locations"]
+rotations = light_conf["rotations"]
+types = light_conf["types"]
+
+for i, (eng, loc, rot, typ) in enumerate(zip(energies, locations, rotations, types)):
+    print(eng, loc, rot, typ)
+    bpy.ops.object.light_add(
+        type=typ, location=(loc["x"], loc["y"], 0), rotation=(rot["x"], rot["y"], 0)
+    )
+    bpy.context.object.data.energy = eng
 
 bpy.ops.import_scene.fbx(filepath=str(FILE_PATH / "Walking.fbx"))
 walker = bpy.context.active_object
