@@ -2,3 +2,6 @@
 frames/
 .DS_Store
 *.mp4
+*.json
+*.zip
+*.glb

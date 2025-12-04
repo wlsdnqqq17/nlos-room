@@ -6,21 +6,23 @@ from pathlib import Path
 
 import bpy
 
-FILE_PATH = Path("/Users/jinwoo/Documents/work/room")
+TOTAL_FRAMES = 320
+FRAME_STEP = 20
+MOVE_SPEED = 1.0
+GLB_EXPORT_STEP = 15
+
 system = platform.system()
 print(system)
 if system == "Linux":
     os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 FILE_PATH = Path(__file__).parent
 
-TOTAL_FRAMES = 320
-FRAME_STEP = 20
-MOVE_SPEED = 1.0
-
+if bpy.context.object and bpy.context.object.mode != "OBJECT":
+    bpy.ops.object.mode_set(mode="OBJECT")
 for obj in bpy.data.objects:
-    obj.hide_viewport = False
-bpy.ops.object.select_all(action="SELECT")
-bpy.ops.object.delete()
+    bpy.data.objects.remove(obj, do_unlink=True)
+for mesh in bpy.data.meshes:
+    bpy.data.meshes.remove(mesh)
 
 
 def add_cube(name, loc, scale, hide=False):
@@ -33,14 +35,13 @@ def add_cube(name, loc, scale, hide=False):
 
 
 add_cube("floor", (2, 0, 0), (5, 0.1, 5))
-add_cube("ceiling", (2, -2, 0), (5, 0.1, 5), hide=True)
+add_cube("ceiling", (2, -2, 0), (5, 0.1, 5))
 add_cube("inner wall", (3.5, -1, 0), (3.5, 1, 0.1))
 add_cube("wall1", (2, -1, 5), (5, 1, 0.1))
 add_cube("wall2", (2, -1, -5), (5, 1, 0.1))
 add_cube("wall3", (7, -1, 0), (0.1, 1, 5))
 add_cube("wall4", (-3, -1, 0), (0.1, 1, 5))
 
-bpy.ops.object.camera_add(location=(-1, -1, -2))
 bpy.ops.object.camera_add(location=(-1, -1, -1.5))
 cam = bpy.context.active_object
 cam.rotation_euler = (0, -2.14675, 3.14159)
@@ -166,14 +167,12 @@ print(f"Start Rendering to {FILE_PATH}...")
 bpy.ops.render.render(animation=True)
 print("Render Finished!")
 
-blend_file_path = FILE_PATH / "saved_scene.blend"
-bpy.ops.wm.save_mainfile(filepath=str(blend_file_path))
 
 bpy.ops.object.camera_add(location=(2, -10, 0))
-cam = bpy.context.active_object
-cam.rotation_euler = (math.radians(90), 0, 0)
-bpy.context.scene.camera = cam
-cam.data.lens = 23
+cam2 = bpy.context.active_object
+cam2.rotation_euler = (math.radians(90), 0, 0)
+bpy.context.scene.camera = cam2
+cam2.data.lens = 23
 
 if "ceiling" in bpy.data.objects:
     bpy.data.objects["ceiling"].hide_render = True
@@ -182,3 +181,63 @@ scene.render.filepath = str(FILE_PATH / "output_top.mp4")
 print(f"Start Rendering to {FILE_PATH / 'output_top.mp4'}...")
 bpy.ops.render.render(animation=True)
 print(f"Render Finished to {FILE_PATH / 'output_top.mp4'}!")
+
+coords_data = {}
+glb_output_dir = FILE_PATH / "glb"
+glb_output_dir.mkdir(exist_ok=True)
+
+env_objects = [
+    obj
+    for obj in bpy.context.scene.objects
+    if obj.name
+    in ["floor", "inner wall", "wall1", "wall2", "wall3", "wall4", "ceiling"]
+]
+
+
+def select_children_recursive(obj):
+    for child in obj.children:
+        child.select_set(True)
+        select_children_recursive(child)
+
+
+print(f"Start exporting GLB and coordinates every {GLB_EXPORT_STEP} frames...")
+
+for f in range(scene.frame_start, scene.frame_end + 1, GLB_EXPORT_STEP):
+    scene.frame_set(f)
+    bpy.context.view_layer.update()
+
+    loc = walker.matrix_world.translation
+    coords_data[f] = {"x": round(loc.x, 4), "y": round(loc.y, 4), "z": round(loc.z, 4)}
+
+    bpy.ops.object.select_all(action="DESELECT")
+    walker.select_set(True)
+    bpy.context.view_layer.objects.active = walker
+    select_children_recursive(walker)
+
+    bpy.ops.object.duplicate()
+    temp_walker = bpy.context.active_object
+    bpy.ops.object.parent_clear(type="CLEAR_KEEP_TRANSFORM")
+
+    for env_obj in env_objects:
+        env_obj.select_set(True)
+
+    filename = f"scene_frame_{f:04d}.glb"
+    glb_path = glb_output_dir / filename
+
+    bpy.ops.export_scene.gltf(
+        filepath=str(glb_path),
+        export_format="GLB",
+        use_selection=True,
+        export_apply=True,
+        export_skins=False,
+        export_animations=False,
+    )
+    for env_obj in env_objects:
+        env_obj.select_set(False)
+    bpy.ops.object.delete()
+
+print("Export Finished!")
+print(coords_data)
+
+blend_file_path = FILE_PATH / "saved_scene.blend"
+bpy.ops.wm.save_mainfile(filepath=str(blend_file_path))
