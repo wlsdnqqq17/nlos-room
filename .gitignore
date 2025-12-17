@@ -5,3 +5,5 @@ frames/
 *.json
 *.zip
 *.glb
+*.npy
+*.obj
